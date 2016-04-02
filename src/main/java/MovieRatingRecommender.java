@@ -15,7 +15,7 @@ public class MovieRatingRecommender {
 	private double[][] itemsLatentFeatureVector;
 	double LEARNING_RATE = 0.01;
 	double MAX_NUM_ITERATION = 5000;
-	double ACCEPTED_SQUARE_ERROR = 0.1;
+	double ACCEPTED_SQUARE_ERROR = 0.01;
 	double LAMBDA = 0.001;
 
 	public void train() throws IOException {
@@ -30,32 +30,28 @@ public class MovieRatingRecommender {
 		int numIteration = 0;
 
 		while(true) {
-//			System.out.println("Iteration: " + numIteration);
-			int count = 0;
 			for(int i = 0; i < numUsers; i++) {
 				for(int j = 0; j < numItems; j++) {
 					if(ratings[i][j] > 0) {
-//						if(count % 10000 == 0) {
-//							System.out.println("Process " + count +  " ratings");
-//						}
 						updateUserLatentFeature(i, j);
-						count++;
 					}
 				}
 			}
 
-//			if(numIteration % 1000 == 0) {
+			if(numIteration % 100 == 0) {
+				System.out.println("iteration: " + numIteration);
+				// optimization to avoid this expensive calculation on every iteration
 				double error = calculateMeanSquareError();
 				System.out.println(error);
 				if(error < ACCEPTED_SQUARE_ERROR) break;
-//			}
+			}
+
 
 			if(numIteration == MAX_NUM_ITERATION) {
 				System.out.println("num iteration exceded");
 				break;
 			}
 			numIteration++;
-			count = 0;
 		}
 	}
 
@@ -74,6 +70,7 @@ public class MovieRatingRecommender {
 				}
 			}
 		}
+		numRatings *=2;
 		return error/numRatings;
 	}
 
