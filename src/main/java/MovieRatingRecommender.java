@@ -16,7 +16,7 @@ public class MovieRatingRecommender {
 	double LEARNING_RATE = 0.01;
 	double MAX_NUM_ITERATION = 5000;
 	double ACCEPTED_SQUARE_ERROR = 0.01;
-	double LAMBDA = 0.001;
+	double LAMBDA = 0.01;
 
 	public void train() throws IOException {
 		loadTrainingData();
