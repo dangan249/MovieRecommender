@@ -1,4 +1,6 @@
 *.class
+data.csv
+predicted_ratings.csv
 
 # Mac finder artifacts
 .DS_Store
