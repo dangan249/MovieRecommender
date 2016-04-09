@@ -3,190 +3,132 @@ import java.io.FileReader;
 import java.io.IOException;
 
 public class MovieRatingRecommender {
-	private String trainDataFile;
-	private int numLatentFeature;
-	private int numUsers;
-	private int numItems;
+  private String trainDataFile;
+  private int numLatentFeature;
+  private int numInstances;
+  private int numUsers;
+  private int numItems;
 
-	private int[][] ratings;
-	private int[][] predictedRatings;
+  private int[][] data;
+  private int NUM_DATA_COLUMN = 3;
+  private final int FOLD = 5;
 
-	private double[][] usersLatentFeatureVector;
-	private double[][] itemsLatentFeatureVector;
-	double LEARNING_RATE = 0.01;
-	double MAX_NUM_ITERATION = 5000;
-	double ACCEPTED_SQUARE_ERROR = 0.01;
-	double LAMBDA = 0.01;
+  public MovieRatingRecommender(String trainDataFile, int numLatentFeature, int numUsers, int numItems, int numInstances) {
+    this.trainDataFile = trainDataFile;
+    this.numLatentFeature = numLatentFeature;
+    this.numInstances = numInstances;
+    this.numItems = numItems;
+    this.numUsers = numUsers;
 
-	public void train() throws IOException {
-		loadTrainingData();
-		initializeLatentFeatureVectors();
-		trainMatrixFactorization();
-		printData();
-		printResult();
-	}
+    this.data = new int[numInstances][NUM_DATA_COLUMN];
+  }
 
-	private void trainMatrixFactorization() {
-		int numIteration = 0;
+  public void train() throws IOException {
+    loadTrainingData();
 
-		while(true) {
-			for(int i = 0; i < numUsers; i++) {
-				for(int j = 0; j < numItems; j++) {
-					if(ratings[i][j] > 0) {
-						updateUserLatentFeature(i, j);
-					}
-				}
-			}
+    // we gonna slice the data in FOLD chunks and use one chunk at a time as test data
+    for (int currentFold = 0; currentFold < FOLD; currentFold++) {
+      System.out.println("**************");
+      System.out.println("fold " + currentFold);
 
-			if(numIteration % 100 == 0) {
-				System.out.println("iteration: " + numIteration);
-				// optimization to avoid this expensive calculation on every iteration
-				double error = calculateMeanSquareError();
-				System.out.println(error);
-				if(error < ACCEPTED_SQUARE_ERROR) break;
-			}
+      int[][] ratings = getTrainingDataForFold(data, currentFold);
+      int[][] testData = getTestingDataForFold(data, currentFold);
 
+      CollaborativeFiltering collaborativeFiltering = new CollaborativeFiltering(ratings, numUsers, numItems, numLatentFeature);
+      collaborativeFiltering.trainMatrixFactorization();
+      collaborativeFiltering.predict(testData);
+    }
+  }
 
-			if(numIteration == MAX_NUM_ITERATION) {
-				System.out.println("num iteration exceded");
-				break;
-			}
-			numIteration++;
-		}
-	}
+  private int getTestDataStartIndexForFold(int fold) {
+    return fold * getNumInstancesPerFold();
+  }
 
-	private double calculateMeanSquareError() {
-		double error = 0;
-		int numRatings = 0;
-		for(int i = 0; i < numUsers; i++) {
-			for (int j = 0; j < numItems; j++) {
-				if(ratings[i][j] > 0) {
-					double rating = ratings[i][j];
-					double predictedRating = calculatePredictedRating(usersLatentFeatureVector[i], itemsLatentFeatureVector[j]);
-//					System.out.println("rating: "  + rating);
-//					System.out.println("predictedRating: " + predictedRating);
-					error += Math.pow(rating - predictedRating, 2) + LAMBDA * (calculateVectorLengthSqr(usersLatentFeatureVector[i]) + calculateVectorLengthSqr(itemsLatentFeatureVector[j]));
-					numRatings++;
-				}
-			}
-		}
-		numRatings *=2;
-		return error/numRatings;
-	}
+  private int[][] getTestingDataForFold(int[][] data, int currentFold) {
+    int testDataStartIndex = getTestDataStartIndexForFold(currentFold);
+    int testDataEndIndex = getTestDataEndIndexForFold(currentFold);
+    int numTestRows = getNumInstancesForFold(currentFold);
+    int[][] testData = new int[numTestRows][NUM_DATA_COLUMN];
 
-	private double calculateVectorLengthSqr(double[] vector) {
-		double len = 0;
-		for(int i = 0; i < vector.length; i++) {
-			len += Math.pow(vector[i], 2);
-		}
-		return len;
-	}
+    int rowIndex = 0;
+    for (int i = testDataStartIndex; i <= testDataEndIndex; i++) {
+      int[] row = data[i];
+      for (int j = 0; j < NUM_DATA_COLUMN; j++) {
+        testData[rowIndex][j] = row[j];
+      }
+      rowIndex++;
+    }
+    return testData;
+  }
 
-	private void updateUserLatentFeature(int userIndex, int itemIndex) {
-		int currentRating = ratings[userIndex][itemIndex];
-		double[] currentUserLatentFeatureVector = usersLatentFeatureVector[userIndex];
-		double[] currentItemLatentFeatureVector = itemsLatentFeatureVector[itemIndex];
-		double newRating = calculatePredictedRating(currentUserLatentFeatureVector, currentItemLatentFeatureVector);
-		double[] newUserLatentFeatureVector = new double[numLatentFeature];
-		double[] newItemLatentFeatureVector = new double[numLatentFeature];
+  private int[][] getTrainingDataForFold(int[][] data, int currentFold) {
+    int testDataStartIndex = getTestDataStartIndexForFold(currentFold);
+    int testDataEndIndex = getTestDataEndIndexForFold(currentFold);
+    int numTestRows = getNumInstancesForFold(currentFold);
+    int numRows = data.length - numTestRows;
+    int leftTrainingDataStartIndex = 0;
+    int leftTrainingDataEndIndex = testDataStartIndex - 1;
+    int rightTrainingDataStartIndex = testDataEndIndex + 1;
+    int rightTrainingDataEndIndex = data.length - 1;
+    int[][] trainingData = new int[numRows][NUM_DATA_COLUMN];
 
-		for(int i = 0; i < numLatentFeature; i++) {
-			newUserLatentFeatureVector[i] = currentUserLatentFeatureVector[i] + LEARNING_RATE * ((currentRating - newRating) * currentItemLatentFeatureVector[i] - LAMBDA * currentUserLatentFeatureVector[i]);
-			newItemLatentFeatureVector[i] = currentItemLatentFeatureVector[i] + LEARNING_RATE * ((currentRating - newRating) * currentUserLatentFeatureVector[i] - LAMBDA * currentItemLatentFeatureVector[i]);
-		}
+    int rowIndex = 0;
+    for (int i = leftTrainingDataStartIndex; i <= leftTrainingDataEndIndex; i++) {
+      int[] row = data[i];
+      for (int j = 0; j < NUM_DATA_COLUMN; j++) {
+        trainingData[rowIndex][j] = row[j];
+      }
+      rowIndex++;
+    }
 
-		for(int i = 0; i < numLatentFeature; i++) {
-			currentUserLatentFeatureVector[i] = newUserLatentFeatureVector[i];
-			currentItemLatentFeatureVector[i] = newItemLatentFeatureVector[i];
-		}
-	}
+    for (int i = rightTrainingDataStartIndex; i <= rightTrainingDataEndIndex; i++) {
+      int[] row = data[i];
+      for (int j = 0; j < NUM_DATA_COLUMN; j++) {
+        trainingData[rowIndex][j] = row[j];
+      }
+      rowIndex++;
+    }
 
-	// calculate newRating by multiple two current latent feature vectors
-	private double calculatePredictedRating(double[] userLatentFeatureVector, double[] itemLatentFeatureVector) {
-		double rating = 0;
-		for(int i = 0; i < numLatentFeature; i++) {
-			rating += userLatentFeatureVector[i] * itemLatentFeatureVector[i];
-		}
+    return trainingData;
+  }
 
-		return rating;
-	}
+  private int getTestDataEndIndexForFold(int fold) {
+    // check if we are at the last fold that we should get all instances up to the last index
+    return fold == FOLD - 1 ? numInstances - 1 : getTestDataStartIndexForFold(fold) + getNumInstancesPerFold() - 1;
+  }
 
-	private void initializeLatentFeatureVectors() {
-		for(int i = 0; i < numUsers; i++) {
-			for(int j = 0; j < numLatentFeature; j++) {
-				usersLatentFeatureVector[i][j] = Math.random();
-			}
-		}
+  private int getNumInstancesPerFold() {
+    return numInstances / FOLD;
+  }
 
+  private int getNumInstancesForFold(int fold) {
+    // the last fold rarely have the same number of rows as other folds (unless the total number of instances are divided by the fold number)
+    return fold == FOLD - 1 ? numInstances - (FOLD - 1) * getNumInstancesPerFold() : getNumInstancesPerFold();
+  }
 
-		for(int i = 0; i < numItems; i++) {
-			for(int j = 0; j < numLatentFeature; j++) {
-				itemsLatentFeatureVector[i][j] = Math.random();
-			}
-		}
-	}
-
-	private void loadTrainingData() throws IOException {
+  private void loadTrainingData() throws IOException {
 		String line;
 		BufferedReader br = new BufferedReader(new FileReader(trainDataFile));
+    int count = 0;
 		while ((line = br.readLine()) != null) {
 			String[] dataItem = line.split("\\s+");
 			int user = Integer.parseInt(dataItem[0]);
 			int item = Integer.parseInt(dataItem[1]);
 			int rating = Integer.parseInt(dataItem[2]);
-			ratings[user - 1][item - 1] = rating;
+
+      data[count][0] = user;
+      data[count][1] = item;
+      data[count][2] = rating;
+      count++;
 		}
-	}
-
-	private void printData() {
-		System.out.println("DATA");
-		StringBuilder stringBuilder = new StringBuilder();
-		for (int i = 0; i < numUsers; i++) {
-//			stringBuilder.append("User " + (i + 1) + ":    ");
-			for (int j = 0; j < numItems; j++) {
-				if(ratings[i][j] > 0) {
-					stringBuilder.append(ratings[i][j]);
-				} else {
-					//stringBuilder.append("?");
-				}
-				stringBuilder.append(",");
-			}
-			stringBuilder.append("\n");
-		}
-		Utils.saveStringToFile(stringBuilder.toString(), "data.csv");
-	}
-
-	private void printResult() {
-		System.out.println("RESULT");
-		StringBuilder stringBuilder = new StringBuilder();
-
-		for (int i = 0; i < numUsers; i++) {
-//			stringBuilder.append("User " + (i + 1) + ":    ");
-			for (int j = 0; j < numItems; j++) {
-				double predictedRating = calculatePredictedRating(usersLatentFeatureVector[i], itemsLatentFeatureVector[j]);
-				stringBuilder.append(Math.round(predictedRating));
-				stringBuilder.append(",");
-			}
-			stringBuilder.append("\n");
-		}
-		Utils.saveStringToFile(stringBuilder.toString(), "predicted_ratings.csv");
-	}
-
-	public MovieRatingRecommender(String trainDataFile, int numLatentFeature, int numUsers, int numItems) {
-		this.trainDataFile = trainDataFile;
-		this.numLatentFeature = numLatentFeature;
-		this.ratings = new int[numUsers][numItems];
-		this.numUsers = numUsers;
-		this.numItems = numItems;
-		this.usersLatentFeatureVector = new double[numUsers][numLatentFeature];
-		this.itemsLatentFeatureVector = new double[numItems][numLatentFeature];
 	}
 
 	public static void main(String[] args) {
 		int numLatenFeature = 50;
 		int numUsers = 943; //943;
 		int numItems = 1682;//1682;
-		MovieRatingRecommender recommender = new MovieRatingRecommender("u.data", numLatenFeature, numUsers, numItems);
+    int numInstances = 100000;
+		MovieRatingRecommender recommender = new MovieRatingRecommender("u.data", numLatenFeature, numUsers, numItems, numInstances);
 		try {
 			recommender.train();
 		} catch (IOException e) {
