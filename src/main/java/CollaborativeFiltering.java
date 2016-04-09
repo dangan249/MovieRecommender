@@ -35,7 +35,7 @@ public class CollaborativeFiltering {
       if(numIteration % 100 == 0) {
         //System.out.println("iteration: " + numIteration);
         double error = calculateMeanSquareError();
-        //System.out.println("MSE: " + error);
+        System.out.println("MSE: " + error);
         if(error < ACCEPTED_SQUARE_ERROR) break;
       }
 
@@ -49,14 +49,21 @@ public class CollaborativeFiltering {
 
 
   public void predict(int[][] testData) {
+    double squareError = 0;
+    double absoluteError = 0;
     for(int i = 0;  i < testData.length; i++) {
       int[] userItemPair = testData[i];
       int userIndex = userItemPair[0] - 1;
       int itemIndex = userItemPair[1] - 1;
       int rating = userItemPair[2];
       double predictedRating = calculatePredictedRating(usersLatentFeatureVector[userIndex], itemsLatentFeatureVector[itemIndex]);
-      System.out.println("Rating: " + rating + " -- Predicted: " + predictedRating);
+      absoluteError = Math.abs(predictedRating - rating);
+      squareError += Math.pow(absoluteError, 2);
+      // System.out.println("Rating: " + rating + " -- Predicted: " + predictedRating);
     }
+
+    System.out.println("MAE : " + absoluteError / testData.length);
+    System.out.println("RMSE : " + Math.sqrt(squareError / testData.length));
   }
 
   private void updateUserLatentFeature(int userIndex, int itemIndex) {
@@ -91,7 +98,6 @@ public class CollaborativeFiltering {
         }
       }
     }
-    numRatings *=2;
     return error/numRatings;
   }
 
