@@ -65,7 +65,7 @@ public class MovieRatingRecommender {
 					double predictedRating = calculatePredictedRating(usersLatentFeatureVector[i], itemsLatentFeatureVector[j]);
 //					System.out.println("rating: "  + rating);
 //					System.out.println("predictedRating: " + predictedRating);
-					error += Math.pow(rating - predictedRating, 2) + LAMBDA * (calculateVectorLengthSqr(usersLatentFeatureVector[i]) + calculateVectorLengthSqr(itemsLatentFeatureVector[i]));
+					error += Math.pow(rating - predictedRating, 2) + LAMBDA * (calculateVectorLengthSqr(usersLatentFeatureVector[i]) + calculateVectorLengthSqr(itemsLatentFeatureVector[j]));
 					numRatings++;
 				}
 			}
